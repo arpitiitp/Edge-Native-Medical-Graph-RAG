@@ -1,0 +1,32 @@
+# Environments
+venv/
+env/
+.env
+.venv/
+env.bak/
+venv.bak/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest
+.pytest_cache/
+
+# VS Code / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific local test files
+test_inference.json
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Docker 
+# .dockerignore should be used for docker build context, but adding here just in case
+# docker-compose.override.yml
