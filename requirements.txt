@@ -1,0 +1,28 @@
+# Web and API
+fastapi
+uvicorn
+python-multipart
+
+# Database
+sqlalchemy
+psycopg2-binary
+pgvector
+
+# RAG & Embeddings
+langchain
+pypdf
+sentence-transformers
+
+# Knowledge Graph & NER
+networkx
+scispacy
+# Install the scispacy medical NER model directly
+https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_ner_bc5cdr_md-0.5.4.tar.gz
+
+# Logic / Testing
+pytest
+
+# UI & Inference
+ollama
+streamlit
+streamlit-agraph
