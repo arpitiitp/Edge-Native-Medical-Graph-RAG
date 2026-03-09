@@ -1,19 +1,41 @@
 version: '3.8'
 
 services:
-  db:
-    build:
-      context: ./docker/postgres
-      dockerfile: Dockerfile
-    container_name: btp_graphrag_db
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: medical_rag_postgres
     environment:
+      POSTGRES_DB: medical_db
       POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: graphrag_db
+      POSTGRES_PASSWORD: adminpassword
     ports:
       - "5432:5432"
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d medical_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5
+    container_name: medical_rag_neo4j
+    environment:
+      NEO4J_AUTH: neo4j/adminpassword
+    ports:
+      - "7474:7474" # HTTP
+      - "7687:7687" # Bolt
+    volumes:
+      - neo4j_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
 
 volumes:
-  db_data:
+  postgres_data:
+  neo4j_data:

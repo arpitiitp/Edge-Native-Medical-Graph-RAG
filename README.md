@@ -1,127 +1,130 @@
-# Edge-Native Medical Graph RAG
+# Medical Edge-Native Agentic RAG
 
-This project is a privacy-first, hallucination-free generative AI system specifically designed for the healthcare domain. It combines **Vector Similarity Search** (pgvector) with **Knowledge Graph Traversal** (Apache AGE) to answer clinical queries securely on your local machine using a Small Language Model (SLM).
+## Project Overview
 
-## System Architecture
+This is an **Edge-Native, Privacy-First Agentic RAG** system designed for medical institutions as part of a B.Tech Project. 
+The core innovation of this project focuses on **Zero Data Exfiltration** by keeping all processing local (no patient data leaves the hospital's network).
+
+### Key Features
+1. **100% Local Processing**: Utilizes Ollama (`llama3.2`) for local Large Language Model generation and local embeddings (`nomic-embed-text`), completely removing reliance on external cloud APIs like OpenAI.
+2. **Temporal Knowledge Graphs**: Uses Graphiti + Neo4j to store patient timelines, treatment histories, and relationships, enabling complex medical queries that standard vector search struggles with.
+3. **Hybrid Search (Vector + Graph)**:
+   - *Semantic Search* (PostgreSQL + pgvector): Finds similar medical reports and clinical guidelines.
+   - *Relational Search* (Neo4j): Finds complex timeline relationships (e.g., "Show me the timeline of medications this patient took").
+4. **Multi-Persona Agentic RAG**: Dual agents tailored for **Clinical Staff** (Doctors/Nurses) and **Administrative Staff** (Insurance/Billing).
+
+---
+
+## Architecture Components
+- **Language Model Framework**: Pydantic AI
+- **LLM Engine**: Ollama (Running locally)
+- **Primary Generator Model**: `llama3.2`
+- **Embedding Model**: `nomic-embed-text`
+- **Knowledge Graph**: Neo4j
+- **Vector Database**: PostgreSQL with `pgvector`
+
+### Architecture Diagram
 
 ```mermaid
 graph TD
-    %% Define User Flow
-    User([User / Clinician]) -->|Uploads PDF & Asks Queries| UI
-
-    %% Define Frontend Component
-    subgraph Frontend [Presentation Layer]
-        UI([Streamlit Dashboard])
-    end
-
-    %% Define Backend Services
-    subgraph Backend [FastAPI Backend]
-        API(API Router)
-        Ingestion(Data Ingestion & PDF Parser)
-        Embedding(SentenceTransformers)
-        Extractor(Spacy Custom Entity Extractor)
-        GraphBuilder(NetworkX In-Memory Builder)
-        HybridRetrieval(Vector + Graph Linker)
-        LLMClient(Ollama inference connector)
-    end
-
-    %% Define Database Layer
-    subgraph Database [Unified PostgreSQL Layer]
-        PGVector[(pgvector: Dense Chunks)]
-        AGE[(Apache AGE: Knowledge Graph)]
-    end
-
-    %% Define Local Inference Engine
-    subgraph Inference [Edge Inference Layer]
-        Ollama(Ollama Daemon)
-        SLM((Phi-3.5 3.8B Model))
-    end
-
-    %% Connections
-    UI <-->|JSON over HTTP| API
+    User((User)) <-->|Query| UI[Rich CLI]
+    UI <-->|Stream| Agent{Pydantic AI Agent}
     
-    API -->|1. File Upload| Ingestion
-    Ingestion -->|2. Chunk Text| Embedding
-    Embedding -->|3. Dense Vector 384d| PGVector
+    Agent <-->|Reasoning| Llama[Ollama: llama3.2]
     
-    Ingestion -->|4. Clean Text| Extractor
-    Extractor -->|5. Entities & Relations| GraphBuilder
-    GraphBuilder -->|6. Cypher SQL serialization| AGE
-
-    API -->|7. User Query| HybridRetrieval
-    HybridRetrieval -->|8a. Vector Query| Embedding
-    HybridRetrieval <-->|8b. Top K Chunks| PGVector
-    HybridRetrieval <-->|8c. Multi-hop Context| AGE
+    Agent -->|Semantic| ToolV[Vector DB Tool]
+    Agent -->|Relational| ToolG[Graph DB Tool]
     
-    HybridRetrieval -->|9. Formatted Prompt| LLMClient
-    LLMClient -->|10. Strict Generation| Ollama
-    Ollama <--> SLM
+    ToolV <-->|Hybrid Search| PG[(PostgreSQL + pgvector)]
+    ToolG <-->|Cypher Search| Neo[(Neo4j Knowledge Graph)]
+    
+    subgraph Ingestion Pipeline
+        Docs[Medical Documents] --> Chunker[nomic-embed-text]
+        Chunker -->|Vector & Text| PG
+        Chunker --> Extractor[JSONL Extractor]
+        Extractor <-->|Extract Entities| Llama
+        Extractor -->|Nodes & Edges| Neo
+    end
 ```
 
 ---
 
-## Architecture Deep Dive & Tech Stack Justification
+## Implementation Journey
 
-The goal of this project was to construct a highly reliable, completely untethered RAG (Retrieval-Augmented Generation) system for private medical data. Rather than sending Protected Health Information (PHI) over the internet to OpenAI, the entire pipeline runs locally ("Edge-Native").
+Below is the step-by-step methodology used to build the application.
 
-### 1. Presentation Layer (Frontend)
-- **Tech Stack:** Streamlit
-- **Logic / Component Role:** The UI provides an intuitive interface for clinicians to upload PDF laboratory reports and converse with the underlying data. It visibly displays the "citations" (raw text snippets + graph entities) so the user can audit the AI's logic.
-- **Why this stack?** Streamlit allows for the rapid transition of Python ML logic into an interactive web application without needing heavy boilerplate JavaScript frameworks (like React). It perfectly supports file uploading, chatting, and status spinners out of the box.
+### Step 1: Core Infrastructure
+The foundational databases for the Agentic RAG system were containerized using Docker, leveraging PostgreSQL (with pgvector) and Neo4j. LLM generation was fully offloaded to local edge compute using Ollama.
 
-### 2. Core Orchestration (Backend)
-- **Tech Stack:** FastAPI + Python 3.10+
-- **Logic / Component Role:** This acts as the central hub. It parses PDFs (using `PyMuPDF`/`fitz`), divides the text into meaningful chunks (using `Langchain` RecursiveCharacterTextSplitter), coordinates the extraction models, connects to the database, and formats the final prompt matrix for the SLM.
-- **Why this stack?** FastAPI is asynchronous, high-performance, and lightweight. Because Graph RAG pipelines are heavily I/O bound (waiting for database writes, waiting for SLM generation), asynchronous routing prevents the backend from locking up under multiple queries.
+### Step 2: Project Foundations
+The core software components were installed and initialized. The system relies heavily on `pydantic-ai` for creating Type-Safe agents, and `asyncpg` combined with the official `neo4j` Python driver for fast, asynchronous database queries.
 
-### 3. Unified Database Layer
-- **Tech Stack:** PostgreSQL + `pgvector` + `Apache AGE` (run via Docker)
-- **Logic / Component Role:** 
-  - `pgvector` stores the unstructured document chunks alongside a dense numeric representation of their semantic meaning (embeddings).
-  - `Apache AGE` (A Graph Extension) stores the structured medical entities (like *Haemoglobin*, *Blood Cancer*, *Platelet levels*) and explicit relationships between them.
-- **Why this stack?** Traditionally, Graph RAG systems use two completely disjointed databases: a Vector DB (like Pinecone) and a Graph DB (like Neo4j). This causes extreme operational overhead, synchronization errors, and latency. By using PostgreSQL with two powerful extensions natively communicating within the same process, we achieve atomic transactions, unified backup/restore strategies, and rapid querying using SQL and Cypher side-by-side.
+### Step 3: Data Processing & Ingestion
+The goal of this step is to chunk mock medical documents (Patient Reports, Hospital Policies) and push them into both the Semantic Vector Database (PostgreSQL) and the Relational Knowledge Graph (Neo4j). 
 
-### 4. Extraction & Embedding 
-- **Tech Stack:** `sentence-transformers` (`all-MiniLM-L6-v2`) + `Spacy` (Custom Medical EntityRuler) + `NetworkX`
-- **Logic / Component Role:** 
-  1. The sentence transformer turns textual document chunks into 384-dimensional dense vectors to capture semantic meaning.
-  2. Spacy scans the raw text to locate Medical Entities (Conditions, Test Parameters, Symptoms) using custom-coded regex and list rules. 
-  3. NetworkX connects these entities logically to the document chunks in system RAM before writing the final topology to Apache AGE.
-- **Why this stack?** We intentionally chose SLMs (Small Language Models) for embeddings. `all-MiniLM-L6-v2` is incredibly fast, weighing only ~80MB, and runs blazingly fast on standard CPUs. For Knowledge Extraction, while heavy LLMs can extract graphs (via prompting), they are slow and expensive, and strict C++ NLP libraries (like SciSpacy) can face compile-time conflicts on Windows. We chose standard `Spacy` augmented with a strict `EntityRuler` because it is deterministic, lightweight, heavily reliable, and cross-platform native.
+**Overcoming Small Language Model Limitations:**
+Standard graph extraction libraries (like `Graphiti`) prompt LLMs to generate massive, deeply-nested JSON schemas containing arrays of nodes and edges. While models like `gpt-4o` handle this easily, local 3B parameter models like `llama3.2` struggle severely, dropping brackets or hallucinating structures which causes the pipeline to crash in infinite parsing retries. 
 
-### 5. Edge Inference & Final Generation
-- **Tech Stack:** Ollama + Phi-3.5 (SLM)
-- **Logic / Component Role:** The final step involves retrieving the hybrid context (the highly relevant text block from PostgreSQL + the surrounding entity metadata from Apache AGE). We inject this context into a strict system prompt and feed it to Microsoft's Phi-3.5 SLM (served by Ollama). We set the generation temperature to `0.0`.
-- **Why this stack?** Phi-3.5 (3.8 Billion parameters) punches massively above its weight class, rivaling much larger models in logic and reasoning, but crucially fitting entirely within the RAM/VRAM of a local laptop. By using Ollama, we simplify model downloading and local execution. Because medical use cases have zero-tolerance for hallucinations, we rely on the dense context provided by our Graph+Vector database layer, forcing the deterministic local SLM to ONLY answer based on the provided truth, mathematically preventing hallucinations.
+To overcome this, **we implemented a Custom Deterministic SLM Extractor**:
+1. **Semantic Text Chunking**: We use a custom local embedder `nomic-embed-text` with a 768 dimension size to intelligently chunk text.
+2. **Deterministic Database Saving**: We save the chunks (and their vector embeddings) instantly to PostgreSQL.
+3. **JSONL Graph Extraction**: We prompt the local `llama3.2` model to act as a pure strict entity extractor, forcing it to output a flat, line-delimited `JSONL` stream. This allows the local SLM to focus on one concept at a time.
+   - We extract `CONDITIONS`, `MEDICATIONS`, `PERSONNEL`, and `FACILITIES`.
+   - If the SLM hallucinates on Line 5, we simply catch the `JSONDecodeError` on that specific line, drop it, and continue parsing the other valid entities without failing the entire batch!
+4. **Native Neo4j Population**: We wrote a custom async Python Native Neo4j wrapper that takes the Python Dicts returned by the JSONL parser and fires highly-optimized Cypher `MERGE` queries to construct the Knowledge Graph safely and reliably.
+
+### Step 4: Medical Agent Development
+Using **Pydantic AI**, we developed a medical orchestrator agent capable of autonomously deciding when to search via Vector semantics or Graph relationships. This agent uses `Ollama` running completely locally on edge hardware.
+- `search_vector_db`: Triggers a fast `pgvector` hybrid search on PostgreSQL.
+- `search_graph_db`: Triggers an optimized Cypher query on Native Neo4j to find relationship paths for specific Persons or Conditions.
+
+### Step 5: Command Line Interface
+The final step wrapped the intelligent assistant in a beautiful **Rich CLI Terminal Interface** for intuitive local interaction!
 
 ---
 
-## How to Run the System
+## Setup & Installation
 
-You will need **Python**, **Docker Desktop**, and **Ollama** installed locally.
+Follow these instructions to run the Edge-Native Medical RAG system locally.
 
-**1. Start the Database (Terminal 1)**
-```powershell
-docker compose up -d
-```
-*(Starts PostgreSQL on port 5432 quietly in the background)*
+**1. Prerequisites**
+- Install **Docker Desktop** and ensure the engine is actively running.
+- Install **Ollama** locally on your machine.
+- Install **Anaconda or Miniconda** for environment management.
 
-**2. Ensure the Local AI Model is Running (Terminal 2)**
-```powershell
-ollama run phi3
-```
-*(You can exit the chat with `/bye`, the engine stays alive on port 11434)*
-
-**3. Run the Backend API (Terminal 3)**
-```powershell
-.\venv\Scripts\activate
-uvicorn backend.main:app --host 127.0.0.1 --port 8000
+**2. Start the Databases**
+Run the `docker-compose.yml` to spin up PostgreSQL (with pgvector) and Neo4j.
+```bash
+docker-compose up -d
 ```
 
-**4. Run the Streamlit UI (Terminal 4)**
-```powershell
-.\venv\Scripts\activate
-streamlit run frontend/app.py --server.port 8501
+**3. Download Local AI Models**
+Pull the necessary lightweight LLMs using Ollama:
+```bash
+ollama pull llama3.2
+ollama pull nomic-embed-text
 ```
 
-Access the UI at `http://localhost:8501`, upload the medical PDF from the `data/` folder, generate the graph, and begin querying!
+**4. Setup Python Environment**
+Create an isolated Conda environment and install dependencies:
+```bash
+conda create -n btp python=3.11
+conda activate btp
+pip install -r requirements.txt
+```
+
+**5. Run Data Ingestion**
+To populate the Graph and Vector databases with the medical context:
+```bash
+python -m ingestion.ingest --documents documents --clean
+```
+
+**6. Start the Agentic Chat Interface**
+To interact with the local Medical RAG Agent:
+```bash
+python cli_chat.py
+```
+
+---
+
+*Project Implementation Complete.*
