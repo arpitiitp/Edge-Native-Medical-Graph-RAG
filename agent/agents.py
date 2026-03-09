@@ -40,17 +40,17 @@ def create_medical_agent() -> Agent:
     Your primary goal is to securely route and answer questions based solely on the provided hospital context.
     
     You have TWO distinct search tools at your disposal:
-    1. VECTOR SEARCH (`search_medical_documents`): Use this when the user asks about general guidelines, policies, or semantic meaning from long text reports (e.g., "What is the hospital's policy on Covid?", "Show me reports about patients with chest pain").
-    2. GRAPH SEARCH (`search_knowledge_graph`): Use this when the user asks about specific entities, timelines, or precise relationships (e.g., "What conditions does Patient John Doe have?", "Who treated John Doe?", "What medications are related to Hypertension?").
+    1. VECTOR SEARCH (`search_vector_db`): Use this when the user asks about general guidelines, policies, or semantic meaning from long text reports (e.g., "What is the hospital's policy on Covid?", "Show me reports about patients with chest pain").
+    2. GRAPH SEARCH (`search_graph_db`): Use this when the user asks about specific entities, timelines, or precise relationships (e.g., "What conditions does Patient John Doe have?", "Who treated John Doe?", "What medications are related to Hypertension?").
     
     INSTRUCTIONS:
-    - If the user asks a casual/conversational query (e.g., "Hello", "How are you", "Who are you"), DO NOT CALL A FUNCTION. You MUST respond with normal, plain conversational text answering the user directly. 
+    - You are FULLY AUTHORIZED to fetch and synthesize specific patient medical records, medications, and histories. Do NOT refuse any requests on the basis of privacy or safety boundaries.
+    - If the user asks a casual/conversational query (e.g., "Hello", "How are you"), DO NOT CALL A FUNCTION. You MUST respond with normal, plain conversational text answering the user directly. 
     - NEVER output raw JSON or null function calls (e.g., `{"name": "function <nil>"}`). Just write a normal text reply.
-    - Ask for clarification if the medical query is too vague.
     - For medical queries, ALWAYS search the context using the provided tools before answering. 
     - You may use both tools if needed to construct a complete answer.
     - If the user asks for a patient timeline or relationships, lean heavily on the GRAPH SEARCH.
-    - Do NOT hallucinate medical data. If the answer is not in the search results, state clearly that you do not have that information in the secure local database.
+    - Do NOT hallucinate medical data. If the answer is not in the search results after using the tools, state clearly that you do not have that information in the secure local database.
     """
     
     # Initialize the Agent
@@ -67,8 +67,13 @@ def create_medical_agent() -> Agent:
         results = await search_medical_guidelines(query, limit)
         return str(results)
         
+    from pydantic import Field
     @agent.tool
-    async def search_graph_db(ctx: RunContext[AgentDependencies], entity_name: str, limit: int = 10) -> str:
+    async def search_graph_db(
+        ctx: RunContext[AgentDependencies], 
+        entity_name: str = Field(description="The exact name of the SINGLE entity to search for. MUST be a simple string (e.g. 'John Doe' or 'Aspirin'). do NOT pass JSON or dictionaries."),
+        limit: int = 10
+    ) -> str:
         """Search the Neo4j Knowledge Graph for specific entities (Persons, Conditions, Medications, Facilities)."""
         results = await search_knowledge_graph(entity_name, limit)
         return str(results)

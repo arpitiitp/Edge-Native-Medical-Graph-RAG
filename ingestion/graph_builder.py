@@ -93,6 +93,10 @@ class GraphBuilder:
             MERGE (p:Personnel {name: pers})
             MERGE (c)-[:MENTIONS]->(p)
         )
+        FOREACH (p IN $persons | 
+            MERGE (per:Person {name: p})
+            MERGE (c)-[:MENTIONS]->(per)
+        )
         FOREACH (fac IN $facilities | 
             MERGE (f:Facility {name: fac})
             MERGE (c)-[:MENTIONS]->(f)
@@ -110,6 +114,7 @@ class GraphBuilder:
                     "conditions": entities.get("conditions", []),
                     "medications": entities.get("medications", []),
                     "personnel": entities.get("personnel", []),
+                    "persons": entities.get("persons", []),
                     "facilities": entities.get("facilities", [])
                 }
                 
@@ -138,7 +143,8 @@ class GraphBuilder:
         chunks: List[DocumentChunk],
         extract_conditions: bool = True,
         extract_medications: bool = True,
-        extract_personnel: bool = True
+        extract_personnel: bool = True,
+        extract_persons: bool = True
     ) -> List[DocumentChunk]:
         """
         Extract entities from chunks using a local LLM and JSONL prompting.
@@ -156,6 +162,7 @@ class GraphBuilder:
                     "conditions": [],
                     "medications": [],
                     "personnel": [],
+                    "persons": [],
                     "facilities": []
                 }
                 
@@ -167,6 +174,7 @@ Extract the following entities from the text:
 - CONDITIONS (diseases, symptoms, diagnoses)
 - MEDICATIONS (drugs, treatments, prescriptions)
 - PERSONNEL (doctors, nurses, medical staff)
+- PERSONS (specific patient names)
 - FACILITIES (hospitals, clinics, wards, departments)
 
 Output ONLY line-delimited JSON (JSONL). Each line MUST be a single JSON object.
@@ -175,6 +183,7 @@ Do NOT output any conversational text.
 
 Example output:
 {"entity_type": "PERSONNEL", "name": "Dr. Smith"}
+{"entity_type": "PERSON", "name": "John Doe"}
 {"entity_type": "CONDITION", "name": "Hypertension"}
 {"entity_type": "MEDICATION", "name": "Lisinopril"}
 {"entity_type": "FACILITY", "name": "General Hospital"}"""
@@ -217,6 +226,8 @@ Example output:
                                         entities["medications"].append(name.lower())
                                     elif e_type == "PERSONNEL" and extract_personnel:
                                         entities["personnel"].append(name)
+                                    elif e_type == "PERSON" and extract_persons:
+                                        entities["persons"].append(name)
                                     elif e_type == "FACILITY":
                                         entities["facilities"].append(name)
                                         
@@ -231,6 +242,7 @@ Example output:
                 entities["conditions"] = list(set(entities["conditions"]))
                 entities["medications"] = list(set(entities["medications"]))
                 entities["personnel"] = list(set(entities["personnel"]))
+                entities["persons"] = list(set(entities["persons"]))
                 entities["facilities"] = list(set(entities["facilities"]))
                 
                 # Create enriched chunk
